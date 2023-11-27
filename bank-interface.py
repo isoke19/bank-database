@@ -1,8 +1,12 @@
 import os
+import sys
 import subprocess
 import psycopg2
 
+from database import *
 from InquirerPy import inquirer
+# import inquirer
+
 
 def main():
 
@@ -22,28 +26,25 @@ def main():
 
     cur = conn.cursor()
 
-    conn.commit()
-    conn.close()
-
     # sign up / login
+    print('Welcome to the ASU Bank!')
     entry = inquirer.select(
-        message='Welcome to the ASU Bank! Select:',
+        message='Select:',
         choices=['Log In', 'Sign Up']
     ).execute()
 
     if entry == 'Log In':
-        customer = login()
+        customer = login(cur, HOME)
 
     if entry == 'Sign Up':
-        customer = sign_up()
+        customer = sign_up(cur)
 
     # actions
-
     action = 'Start'
-    while action != 'Log Out':
+    while action != 'Log Out/Quit':
         action = inquirer.select(
             message='Select Action:',
-            choices=['Open a New Bank Account', 'Deposit', 'Withdraw', 'Send Money', 'Check Transaction History', 'Check Current Balance', 'Log Out']
+            choices=['Open a New Bank Account', 'Deposit', 'Withdraw', 'Send Money', 'Check Transaction History', 'Check Current Balance', 'Log Out/Quit']
         ).execute()
 
         if action == 'Open a New Bank Account':
@@ -64,19 +65,62 @@ def main():
         if action == 'Check Current Balance':
             print('Check Current Balance [action]')
     
-    print('Logging out...')
+    conn.commit()
+    conn.close()
 
     # quits connection to postgresql server
-    subprocess.run(["pg_ctl", "-D", f"{HOME}/bankproj", "stop"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print("POSTGRESQL SERVER STOPPED")
-
-def login():
+    print("Logging out...")
+    quit(HOME)
+        
+def login(cur, HOME):
     '''
     require : c_id (customer_id) and password
-    task    : find matching customer in database, else return error or sign up
+    task    : find matching customer in database, else retry login, signup, or exit
     return  : Customer object
     '''
-    return 'customer_obj_placeholder_from_log_in'
+    print("LOGIN -------------")
+    
+    # Customer ID must be numbers ONLY
+    c_id = int(inquirer.text(
+        message='Enter Customer ID:',
+        validate=lambda c_id: c_id.isdigit() == True,
+        invalid_message='Customer ID must be numbers only.'
+    ).execute())
+
+    password = inquirer.text(
+        message='Enter Password:'
+    ).execute()
+
+    # check database for key match
+    # (correct) ex. SELECT * from Customer WHERE c_id=7 and password='2003'
+
+    cur.execute(f"SELECT * from Customer WHERE c_id={c_id} AND password='{password}'")
+    result = cur.fetchall() # [(7, '2003', 'Mandy', 'Zhou', datetime.date(2003, 5, 23))]
+
+    # only 1 unique result / Customer account
+    if len(result) == 1:
+        print("Successfully logged in -------------") 
+        customer = Customer(c_id, password, result[0][2],result[0][3],result[0][4])
+    
+    # no result
+    else:
+        print("Incorrect login -------------")
+        entry = inquirer.select(
+            message='Select: ',
+            choices=['Retry Log In', 'Sign Up', 'Quit']
+        ).execute()
+
+        if entry == 'Retry Log In':
+            customer = login(cur, HOME)
+
+        if entry == 'Sign Up':
+            customer = sign_up(cur)
+        
+        if entry == 'Quit':
+            quit(HOME)
+            sys.exit(1)
+
+    return customer
 
 def sign_up():
     '''
@@ -84,9 +128,15 @@ def sign_up():
     task    : collect user input for Customer attributes (first_name, last_name, birthday, password)
               create c_id
               create Customer object
+              INSERT INTO new Customer object
     return  : Customer object
     '''
     return 'customer_obj_placeholder_from_sign_up'
+
+def quit(HOME):
+    subprocess.run(["pg_ctl", "-D", f"{HOME}/bankproj", "stop"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print('POSTGRESQL SERVER STOPPED')
+    sys.exit(1)
 
 if __name__ == "__main__":
     main()
