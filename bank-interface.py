@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 import psycopg2
+import datetime
 
 from database import *
 from InquirerPy import inquirer
@@ -83,11 +84,11 @@ def login(cur, HOME):
     # Customer ID must be numbers ONLY
     c_id = int(inquirer.text(
         message='Enter Customer ID:',
-        validate=lambda c_id: c_id.isdigit() == True,
+        validate=lambda c_id: c_id.isdigit(),
         invalid_message='Customer ID must be numbers only.'
     ).execute())
 
-    password = inquirer.text(
+    password = inquirer.secret(
         message='Enter Password:'
     ).execute()
 
@@ -122,7 +123,7 @@ def login(cur, HOME):
 
     return customer
 
-def sign_up():
+def sign_up(cur):
     '''
     require : N/A
     task    : collect user input for Customer attributes (first_name, last_name, birthday, password)
@@ -131,7 +132,43 @@ def sign_up():
               INSERT INTO new Customer object
     return  : Customer object
     '''
-    return 'customer_obj_placeholder_from_sign_up'
+
+    # user input
+
+    first_name = inquirer.text(
+        message='Enter First Name:'
+    ).execute()
+
+    last_name = inquirer.text(
+        message='Enter Last Name:'
+    ).execute()
+
+    birthday = inquirer.text(
+        message='Enter Birthday (YYYY-MM-DD):',
+        validate=validate_birthday,
+        invalid_message='Birthday is invalid. ex. 2003-05-23'
+    ).execute()
+
+    password = inquirer.secret(
+        message='Enter Password:'
+    ).execute()
+    
+    # get current count of Customer_ID
+    # (to then assign next available Customer ID to new Customer)
+    cur.execute("SELECT COUNT(c_id) from Customer")
+    c_id_length = int(cur.fetchall()[0][0]) # [(9,)] --> 9
+
+    # create new Customer
+    customer = Customer(c_id_length+1, password, first_name, last_name, birthday)
+    
+    # insert new Customer into database
+    cur.execute(
+        f"""
+        INSERT INTO Customer (c_id, password, first_name, last_name, birthday)
+        VALUES ({customer.c_id}, '{customer.password}', '{customer.first_name}', '{customer.last_name}', '{customer.birthday}')
+        """)
+
+    return customer
 
 def quit(HOME):
     subprocess.run(["pg_ctl", "-D", f"{HOME}/bankproj", "stop"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
